@@ -1,57 +1,125 @@
 import { useState, useEffect } from 'react'
+import { supabase } from './supabase'
 
 const COLUMNS = ['To Do', 'In Progress', 'Done']
 
-const initialTasks = [
-  { id: 1, title: 'Set up GitHub auth', column: 'Done', createdAt: Date.now() },
-  { id: 2, title: 'Set up Gmail/Calendar (gog CLI)', column: 'To Do', createdAt: Date.now() },
-  { id: 3, title: 'Port mahjong app to GitHub', column: 'To Do', createdAt: Date.now() },
-  { id: 4, title: 'Build kanban board', column: 'In Progress', createdAt: Date.now() },
-]
-
 function App() {
-  const [tasks, setTasks] = useState(() => {
-    const saved = localStorage.getItem('wing-kanban-tasks')
-    return saved ? JSON.parse(saved) : initialTasks
-  })
+  const [tasks, setTasks] = useState([])
   const [newTask, setNewTask] = useState('')
   const [isAdding, setIsAdding] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
 
+  // Load tasks from Supabase
   useEffect(() => {
-    localStorage.setItem('wing-kanban-tasks', JSON.stringify(tasks))
-  }, [tasks])
+    loadTasks()
+    
+    // Subscribe to realtime changes
+    const subscription = supabase
+      .channel('tasks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+        loadTasks()
+      })
+      .subscribe()
 
-  const addTask = (e) => {
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  const loadTasks = async () => {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .order('created_at', { ascending: true })
+    
+    if (error) {
+      console.error('Error loading tasks:', error)
+      // Fallback to localStorage if Supabase fails
+      const saved = localStorage.getItem('wing-kanban-tasks')
+      if (saved) setTasks(JSON.parse(saved))
+    } else {
+      setTasks(data || [])
+    }
+    setLoading(false)
+  }
+
+  const addTask = async (e) => {
     e.preventDefault()
     if (!newTask.trim()) return
     
-    setTasks([...tasks, {
-      id: Date.now(),
-      title: newTask.trim(),
-      column: 'To Do',
-      createdAt: Date.now()
-    }])
+    setSyncing(true)
+    const { data, error } = await supabase
+      .from('tasks')
+      .insert([{ 
+        title: newTask.trim(), 
+        column: 'To Do'
+      }])
+      .select()
+    
+    if (error) {
+      console.error('Error adding task:', error)
+      alert('Failed to add task. Check console for details.')
+    } else {
+      setTasks([...tasks, data[0]])
+    }
+    
     setNewTask('')
     setIsAdding(false)
+    setSyncing(false)
   }
 
-  const moveTask = (taskId, direction) => {
-    setTasks(tasks.map(task => {
-      if (task.id !== taskId) return task
-      const currentIndex = COLUMNS.indexOf(task.column)
-      const newIndex = direction === 'right' 
-        ? Math.min(currentIndex + 1, COLUMNS.length - 1)
-        : Math.max(currentIndex - 1, 0)
-      return { ...task, column: COLUMNS[newIndex] }
-    }))
+  const moveTask = async (taskId, direction) => {
+    const task = tasks.find(t => t.id === taskId)
+    if (!task) return
+
+    const currentIndex = COLUMNS.indexOf(task.column)
+    const newIndex = direction === 'right' 
+      ? Math.min(currentIndex + 1, COLUMNS.length - 1)
+      : Math.max(currentIndex - 1, 0)
+    const newColumn = COLUMNS[newIndex]
+
+    // Optimistic update
+    setTasks(tasks.map(t => 
+      t.id === taskId ? { ...t, column: newColumn } : t
+    ))
+
+    const { error } = await supabase
+      .from('tasks')
+      .update({ column: newColumn })
+      .eq('id', taskId)
+    
+    if (error) {
+      console.error('Error moving task:', error)
+      loadTasks() // Reload on error
+    }
   }
 
-  const deleteTask = (taskId) => {
+  const deleteTask = async (taskId) => {
+    // Optimistic update
     setTasks(tasks.filter(t => t.id !== taskId))
+
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', taskId)
+    
+    if (error) {
+      console.error('Error deleting task:', error)
+      loadTasks() // Reload on error
+    }
   }
 
   const getTasksForColumn = (column) => 
     tasks.filter(t => t.column === column)
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+        <div className="text-xl">Loading tasks...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4">
@@ -65,6 +133,13 @@ function App() {
           + Add Task
         </button>
       </div>
+
+      {/* Sync indicator */}
+      {syncing && (
+        <div className="fixed top-4 right-4 bg-blue-600 px-3 py-1 rounded-full text-sm">
+          Syncing...
+        </div>
+      )}
 
       {/* Add Task Modal */}
       {isAdding && (
@@ -89,9 +164,10 @@ function App() {
               </button>
               <button
                 type="submit"
-                className="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-medium"
+                disabled={syncing}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-medium disabled:opacity-50"
               >
-                Add
+                {syncing ? 'Adding...' : 'Add'}
               </button>
             </div>
           </form>
@@ -163,7 +239,7 @@ function App() {
 
       {/* Footer */}
       <div className="mt-8 text-center text-gray-500 text-sm">
-        <p>Wing's Task Tracker • Built for Wes 🪽</p>
+        <p>Wing's Task Tracker • Synced via Supabase 🪽</p>
       </div>
     </div>
   )
