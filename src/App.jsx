@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 
-const COLUMNS = ['To Do', 'In Progress', 'Done']
+const STATUSES = ['To Do', 'In Progress', 'Done']
 
 function App() {
   const [tasks, setTasks] = useState([])
@@ -53,7 +53,7 @@ function App() {
       .from('tasks')
       .insert([{ 
         title: newTask.trim(), 
-        column: 'To Do'
+        status: 'To Do'
       }])
       .select()
     
@@ -73,20 +73,20 @@ function App() {
     const task = tasks.find(t => t.id === taskId)
     if (!task) return
 
-    const currentIndex = COLUMNS.indexOf(task.column)
+    const currentIndex = STATUSES.indexOf(task.status)
     const newIndex = direction === 'right' 
-      ? Math.min(currentIndex + 1, COLUMNS.length - 1)
+      ? Math.min(currentIndex + 1, STATUSES.length - 1)
       : Math.max(currentIndex - 1, 0)
-    const newColumn = COLUMNS[newIndex]
+    const newStatus = STATUSES[newIndex]
 
     // Optimistic update
     setTasks(tasks.map(t => 
-      t.id === taskId ? { ...t, column: newColumn } : t
+      t.id === taskId ? { ...t, status: newStatus } : t
     ))
 
     const { error } = await supabase
       .from('tasks')
-      .update({ column: newColumn })
+      .update({ status: newStatus })
       .eq('id', taskId)
     
     if (error) {
@@ -110,8 +110,8 @@ function App() {
     }
   }
 
-  const getTasksForColumn = (column) => 
-    tasks.filter(t => t.column === column)
+  const getTasksForStatus = (status) => 
+    tasks.filter(t => t.status === status)
 
   if (loading) {
     return (
@@ -176,26 +176,26 @@ function App() {
 
       {/* Kanban Columns - Horizontal scroll on mobile */}
       <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory">
-        {COLUMNS.map((column, colIndex) => (
+        {STATUSES.map((status, colIndex) => (
           <div 
-            key={column} 
+            key={status} 
             className="flex-shrink-0 w-80 snap-center"
           >
             <div className="bg-gray-800 rounded-xl p-4">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-bold text-lg">
-                  {column === 'To Do' && '📋 '}
-                  {column === 'In Progress' && '🔄 '}
-                  {column === 'Done' && '✅ '}
-                  {column}
+                  {status === 'To Do' && '📋 '}
+                  {status === 'In Progress' && '🔄 '}
+                  {status === 'Done' && '✅ '}
+                  {status}
                 </h2>
                 <span className="bg-gray-700 px-2 py-1 rounded-full text-sm">
-                  {getTasksForColumn(column).length}
+                  {getTasksForStatus(status).length}
                 </span>
               </div>
               
               <div className="space-y-3">
-                {getTasksForColumn(column).map(task => (
+                {getTasksForStatus(status).map(task => (
                   <div 
                     key={task.id}
                     className="bg-gray-700 rounded-lg p-4 border border-gray-600"
@@ -210,7 +210,7 @@ function App() {
                           ← Back
                         </button>
                       )}
-                      {colIndex < COLUMNS.length - 1 && (
+                      {colIndex < STATUSES.length - 1 && (
                         <button
                           onClick={() => moveTask(task.id, 'right')}
                           className="text-xs bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded"
@@ -228,7 +228,7 @@ function App() {
                   </div>
                 ))}
                 
-                {getTasksForColumn(column).length === 0 && (
+                {getTasksForStatus(status).length === 0 && (
                   <p className="text-gray-500 text-center py-8">No tasks</p>
                 )}
               </div>
