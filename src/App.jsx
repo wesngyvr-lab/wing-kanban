@@ -6,13 +6,40 @@ const STATUSES = ['To Do', 'In Progress', 'Done']
 // Default reminders (synced from Wing/Clawdbot)
 const DEFAULT_REMINDERS = [
   {
-    id: '1',
+    id: 'daily-briefing',
     title: '📅 Daily Briefing',
     description: 'Morning update at 8am Bangkok time',
     schedule: '0 1 * * * (8am BKK)',
     category: 'daily',
     enabled: true,
     nextRun: getNextRun8amBKK()
+  },
+  {
+    id: 'thai-90day-day45',
+    title: '🇹🇭 90-Day Report: Day 45',
+    description: 'Halfway point reminder - start planning immigration visit',
+    schedule: 'One-time: Mar 10, 2026',
+    category: 'immigration',
+    enabled: true,
+    nextRun: '2026-03-10T01:00:00.000Z'
+  },
+  {
+    id: 'thai-90day-day85',
+    title: '🇹🇭 90-Day Report: Day 85',
+    description: '5 days left! Time to visit immigration this week',
+    schedule: 'One-time: Apr 19, 2026',
+    category: 'immigration',
+    enabled: true,
+    nextRun: '2026-04-19T01:00:00.000Z'
+  },
+  {
+    id: 'thai-90day-day90',
+    title: '🚨 90-Day Report: DEADLINE',
+    description: 'Report TODAY to avoid overstay penalties!',
+    schedule: 'One-time: Apr 24, 2026',
+    category: 'immigration',
+    enabled: true,
+    nextRun: '2026-04-24T01:00:00.000Z'
   }
 ]
 
@@ -69,7 +96,15 @@ function App() {
   const loadReminders = () => {
     const saved = localStorage.getItem('wing-reminders')
     if (saved) {
-      setReminders(JSON.parse(saved))
+      const savedReminders = JSON.parse(saved)
+      // Merge: keep saved state but add any new defaults
+      const savedIds = new Set(savedReminders.map(r => r.id))
+      const merged = [
+        ...savedReminders,
+        ...DEFAULT_REMINDERS.filter(d => !savedIds.has(d.id))
+      ]
+      setReminders(merged)
+      localStorage.setItem('wing-reminders', JSON.stringify(merged))
     } else {
       setReminders(DEFAULT_REMINDERS)
       localStorage.setItem('wing-reminders', JSON.stringify(DEFAULT_REMINDERS))
